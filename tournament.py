@@ -4,55 +4,62 @@
 #
 
 import psycopg2
+from contextlib import contextmanager
 
 def connect():
 	"""Connect to the PostgreSQL database.  Returns a database connection."""
-    	return psycopg2.connect("dbname=tournament")
+	try:
+		return psycopg2.connect("dbname=tournament")
+	except:
+		print("Connection failed")
+
+@contextmanager
+def get_cursor():
+	"""
+	Query helper function using conext lib.
+	Creates a cursor from a database connection object
+	and performs queries using that cursor
+	"""
+
+	DB = connect()
+	cursor = DB.cursor()
+	try:
+		yield cursor
+	except:
+		raise
+	else:
+		DB.commit()
+	finally:
+		cursor.close()
+		DB.close()
 
 
 def deleteMatches():
     	"""Remove all the match records from the database."""
-  
-  	conn = psycopg2.connect("dbname=tournament")
-    	cursor = conn.cursor()
 
-	#delete data from match table
-	cursor.execute("DELETE from match;")
+	with get_cursor() as cursor:
+		#delete data from match table
+		cursor.execute("DELETE from match;")
 
-	#update player table with win,loss,points,matchs to 0
-	cursor.execute("UPDATE player SET win = 0")
-	cursor.execute("UPDATE player SET loss = 0")
-	cursor.execute("UPDATE player SET points = 0")
-	cursor.execute("UPDATE player SET matches = 0")
-	
-	conn.commit()
-	conn.close()
+		#update player table with matchs to 0
+		cursor.execute("UPDATE player SET matches = 0")
 
 
 def deletePlayers():
     	"""Remove all the player records from the database."""
-    
-  	conn = psycopg2.connect("dbname=tournament")
-    	cursor = conn.cursor()
 
 	#delete data from player table
-    	cursor.execute("DELETE FROM player;")
-	
-	conn.commit()
-	conn.close()
+	with get_cursor() as cursor:
+    		cursor.execute("DELETE FROM player;")
 
 
 def countPlayers():
     	"""Returns the number of players currently registered."""
 
-  	conn = psycopg2.connect("dbname=tournament")
-    	cursor = conn.cursor()
-
 	#return the number of rows in the player table
-    	cursor.execute("SELECT count(*) FROM player;")
-	num_player = int(cursor.fetchone()[0])
-	
-	conn.close()
+	with get_cursor() as cursor:
+    		cursor.execute("SELECT count(*) FROM player;")
+		num_player = int(cursor.fetchone()[0])
 
 	return num_player
 
@@ -67,16 +74,11 @@ def registerPlayer(name):
       		name: the player's full name (need not be unique).
     	"""
 
-  	conn = psycopg2.connect("dbname=tournament")
-    	cursor = conn.cursor()
-
 	#Add the name of the player and initialize win,loss,points,matches to 0
-	cursor.execute("INSERT INTO player (name, win, loss, points, matches) VALUES (%s, %s, %s, %s, %s)" , (name,0,0,0,0))
+	with get_cursor() as cursor:
+		cursor.execute("INSERT INTO player (name, matches) VALUES (%s,%s)" , (name,0,))
 	
-	conn.commit()
-	conn.close()
     	
-
 def playerStandings():
 	"""Returns a list of the players and their win records, sorted by wins.
 
@@ -90,17 +92,14 @@ def playerStandings():
         	wins: the number of matches the player has won
         	matches: the number of matches the player has played
     	"""
-  	
-	conn = psycopg2.connect("dbname=tournament")
-    	cursor = conn.cursor()
 
 	#return player_id along with it's name,win,matches
-	cursor.execute("SELECT player_id, name, win, matches FROM player")
-	standings = cursor.fetchall()
-	
-	conn.close()
+	standing = []
+	with get_cursor() as cursor:
+		cursor.execute("SELECT a.player_id, a.name, COUNT(b.winner_id) AS won, a.matches FROM player a LEFT JOIN match b ON a.player_id=b.winner_id GROUP BY a.player_id ORDER BY won desc;")
+		standing = cursor.fetchall()
 
-	return standings
+	return standing
 
 
 def reportMatch(winner, loser):
@@ -111,15 +110,10 @@ def reportMatch(winner, loser):
       		loser:  the id number of the player who lost
     	"""
 
-  	conn = psycopg2.connect("dbname=tournament")
-    	cursor = conn.cursor()
-	cursor.execute("INSERT INTO match (winner_id, loser_id) VALUES (%s, %s)" , (winner,loser))
-	cursor.execute("UPDATE player SET matches = matches + 1 WHERE player_id = %i" % (winner))
-	cursor.execute("UPDATE player SET matches = matches + 1 WHERE player_id = %i" % (loser))
-	cursor.execute("UPDATE player SET win = win + 1 WHERE player_id = %i" % (winner))
-	conn.commit()
-	
-	conn.close()
+  	with get_cursor() as cursor:
+		cursor.execute("INSERT INTO match (winner_id, loser_id) VALUES (%s, %s)" , (winner,loser,))
+		cursor.execute("UPDATE player SET matches = matches + 1 WHERE player_id = (%s)" % (winner,))
+		cursor.execute("UPDATE player SET matches = matches + 1 WHERE player_id = (%s)" % (loser,))
  
  
 def swissPairings():
@@ -137,41 +131,18 @@ def swissPairings():
         	id2: the second player's unique id
         	name2: the second player's name
     	"""
-	
-	conn = psycopg2.connect("dbname=tournament")
-    	cursor = conn.cursor()
 
 	#return a pair of players by order of most wins
-	cursor.execute("SELECT player_id, name FROM player ORDER BY win DESC");
-	temp = cursor.fetchall()
+	temp = playerStandings()
 	swiss_pairs = []
 	for i in range(0, len(temp), 2):
-		swiss_pairs.append(temp[i] + temp[i+1])
-	conn.close()
+		player1 = temp[i]
+		player2 = temp[i+1]
+		swiss_pairs.append((player1[0], player1[1], player2[0], player2[1]))
 
 	return swiss_pairs
 
 
-'''
-if __name__ == '__main__':
+#if __name__ == '__main__':
 
-	deleteMatches()
-	deletePlayers()
-	registerPlayer("Twilight Sparkle")
-	registerPlayer("Fluttershy")
-	registerPlayer("Applejack")
-	registerPlayer("Pinkie Pie")
-	registerPlayer("Rarity")
-	registerPlayer("Rainbow Dash")
-	registerPlayer("Princess Celestia")
-	registerPlayer("Princess Luna")
-    	standings = playerStandings()
-        [id1, id2, id3, id4, id5, id6, id7, id8] = [row[0] for row in standings]
-	reportMatch(id1, id2)
-	reportMatch(id3, id4)
-	reportMatch(id5, id6)
-	reportMatch(id7, id8)
-	pairing = swissPairings()
-	print pairing
-	print len(pairing)
-'''
+
