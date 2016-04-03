@@ -41,9 +41,6 @@ def deleteMatches():
 		#delete data from match table
 		cursor.execute("DELETE from match;")
 
-		#update player table with matchs to 0
-		cursor.execute("UPDATE player SET matches = 0")
-
 
 def deletePlayers():
     	"""Remove all the player records from the database."""
@@ -74,9 +71,9 @@ def registerPlayer(name):
       		name: the player's full name (need not be unique).
     	"""
 
-	#Add the name of the player and initialize win,loss,points,matches to 0
+	#Add the name of the player
 	with get_cursor() as cursor:
-		cursor.execute("INSERT INTO player (name, matches) VALUES (%s,%s)" , (name,0,))
+		cursor.execute("INSERT INTO player (name) VALUES (%s)" , (name,))
 	
     	
 def playerStandings():
@@ -93,11 +90,25 @@ def playerStandings():
         	matches: the number of matches the player has played
     	"""
 
-	#return player_id along with it's name,win,matches
-	standing = []
+	loser = [] #list of tuples (player's unique id, player's full name, number of matches the player has lost)
+	winner = [] #list of tuples (player's unique id, player's full name, number of matches the player has won)
+	standing = [] #list of tuples (player's unique id, player's full name, number of matches the player has won, number of matches played)
+
 	with get_cursor() as cursor:
-		cursor.execute("SELECT a.player_id, a.name, COUNT(b.winner_id) AS won, a.matches FROM player a LEFT JOIN match b ON a.player_id=b.winner_id GROUP BY a.player_id ORDER BY won desc;")
-		standing = cursor.fetchall()
+		cursor.execute("SELECT a.player_id, a.name, COUNT(b.loser_id) AS lost FROM player a LEFT JOIN match b ON " + 
+			"a.player_id=b.loser_id GROUP BY a.player_id ORDER BY lost asc;")
+		loser = cursor.fetchall()
+
+		cursor.execute("SELECT a.player_id, a.name, COUNT(b.winner_id) AS won FROM player a LEFT JOIN match b ON " + 
+			"a.player_id=b.winner_id GROUP BY a.player_id ORDER BY won desc;")
+		winner = cursor.fetchall()
+
+		for i in range(0, len(winner)):
+			standing.append((winner[i][0], winner[i][1], winner[i][2], winner[i][2]+loser[i][2]))
+
+		# cursor.execute("SELECT a.player_id, a.name, COUNT(b.winner_id) AS won FROM player a LEFT JOIN match b ON " + 
+		# 	"a.player_id=b.winner_id GROUP BY a.player_id ORDER BY won desc;")
+		# standing = cursor.fetchall()
 
 	return standing
 
@@ -112,8 +123,6 @@ def reportMatch(winner, loser):
 
   	with get_cursor() as cursor:
 		cursor.execute("INSERT INTO match (winner_id, loser_id) VALUES (%s, %s)" , (winner,loser,))
-		cursor.execute("UPDATE player SET matches = matches + 1 WHERE player_id = (%s)" % (winner,))
-		cursor.execute("UPDATE player SET matches = matches + 1 WHERE player_id = (%s)" % (loser,))
  
  
 def swissPairings():
@@ -143,6 +152,11 @@ def swissPairings():
 	return swiss_pairs
 
 
-#if __name__ == '__main__':
+# if __name__ == '__main__':
+#     deleteMatches()
+#     deletePlayers()
+#     registerPlayer("Melpomene Murray")
+#     registerPlayer("Randy Schwartz")
+#     standings = playerStandings()
 
 
