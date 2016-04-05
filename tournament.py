@@ -90,25 +90,19 @@ def playerStandings():
         	matches: the number of matches the player has played
     	"""
 
-	loser = [] #list of tuples (player's unique id, player's full name, number of matches the player has lost)
-	winner = [] #list of tuples (player's unique id, player's full name, number of matches the player has won)
-	standing = [] #list of tuples (player's unique id, player's full name, number of matches the player has won, number of matches played)
+	loser = [] #list of tuples (id, name, losts)
+	winner = [] #list of tuples (id, name, wins)
+	standing = [] #list of tuples (id, name, wins, matches)
 
 	with get_cursor() as cursor:
-		cursor.execute("SELECT a.player_id, a.name, COUNT(b.loser_id) AS lost FROM player a LEFT JOIN match b ON " + 
-			"a.player_id=b.loser_id GROUP BY a.player_id ORDER BY lost asc;")
+		cursor.execute("SELECT * FROM lostview;")
 		loser = cursor.fetchall()
 
-		cursor.execute("SELECT a.player_id, a.name, COUNT(b.winner_id) AS won FROM player a LEFT JOIN match b ON " + 
-			"a.player_id=b.winner_id GROUP BY a.player_id ORDER BY won desc;")
+		cursor.execute("SELECT * FROM wonview;")
 		winner = cursor.fetchall()
 
 		for i in range(0, len(winner)):
 			standing.append((winner[i][0], winner[i][1], winner[i][2], winner[i][2]+loser[i][2]))
-
-		# cursor.execute("SELECT a.player_id, a.name, COUNT(b.winner_id) AS won FROM player a LEFT JOIN match b ON " + 
-		# 	"a.player_id=b.winner_id GROUP BY a.player_id ORDER BY won desc;")
-		# standing = cursor.fetchall()
 
 	return standing
 
